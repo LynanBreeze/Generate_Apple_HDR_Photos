@@ -1,190 +1,92 @@
 import Cocoa
 import CoreImage
-//guard let colorSpace_2100_PQ = CGColorSpace(name: CGColorSpace.itur_2100_PQ) else {
-//    print("Couldn't create a color space. :(")
-//    exit(1)
-//}
-//exit(1)
 
-let file_names = CommandLine.arguments
-print(file_names)
-let origin_path = file_names[1]
-let export_path = file_names[2]
-let compress_ratio = file_names[3]
-var cgFloat_compress = CGFloat(1.0)
-if let doubleValue = Double(compress_ratio) {
-    cgFloat_compress = CGFloat(doubleValue)
-    print("compress ratio:", cgFloat_compress)
-} else {
-    print("The string does not represent a valid number.")
+// Constants for command line arguments
+struct CommandLineArguments {
+    let path: String
+    let compressionRatio: CGFloat
 }
 
-let choose_export = file_names[4]
-print("origin_path", origin_path)
-print("export_path", export_path)
-//print(choose_export)
-
-let originalImageURL = URL(fileURLWithPath: origin_path)
-let exportedImageURL = URL(fileURLWithPath: export_path)
-//guard let colorSpace_extended = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3) else {
-//    print("Couldn't create a color space. :(")
-//    exit(1)
-//}
-guard let colorSpace_dp3 = CGColorSpace(name: CGColorSpace.displayP3) else {
-    print("Couldn't create a color space. :(")
-    exit(1)
+// Parses the command line arguments and returns a struct
+func parseCommandLineArguments() -> CommandLineArguments {
+    let arguments = CommandLine.arguments
+    let path = arguments.count > 1 ? arguments[1] : "."
+    let compressionRatio = arguments.count > 2 ? CGFloat(Double(arguments[2]) ?? 0.7) : 0.7
+    
+    return CommandLineArguments(
+        path: path,
+        compressionRatio: compressionRatio
+    )
 }
-//guard let colorSpace_HLG = CGColorSpace(name: CGColorSpace.displayP3_HLG) else {
-//    print("Couldn't create a color space. :(")
-//    exit(1)
-//}
-guard let colorSpace_2100_PQ = CGColorSpace(name: CGColorSpace.itur_2100_PQ) else {
-    print("Couldn't create a color space. :(")
-    exit(1)
-}
-guard let colorSpace_2100_HLG = CGColorSpace(name: CGColorSpace.itur_2100_HLG) else {
-    print("Couldn't create a color space. :(")
-    exit(1)
-}
-//let edr_meta = CAEDRMetadata.hlg
-//guard let edr_meta = CAEDRMetadata.hlg else {
-//    print("Couldn't create a hlg EDR metadata. :(")
-//    exit(1)
-//}
 
-let context = CIContext()
-let options_full = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 1.0 as CGFloat]
-//let options_compress = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.5 as CGFloat]
-let options_compress = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: cgFloat_compress as CGFloat]
+// Function to check if the path is a directory and process accordingly
+func processPath(_ path: String, compressionRatio: CGFloat) {
+    let fileManager = FileManager.default
+    var isDirectory: ObjCBool = false
 
+    let imageExtensions = [".avif"]
 
-guard let image = CIImage(contentsOf: originalImageURL,
-        options: [.expandToHDR: true])
-else {
-    print("Couldn't create an image. :(")
-    exit(1)
-}
-//guard let image = CIImage(contentsOf: originalImageURL)
-//else {
-//    print("Couldn't create an image. :(")
-//    exit(1)
-//}
-let rawFilter = CIRAWFilter(imageURL: originalImageURL)
-rawFilter?.extendedDynamicRangeAmount = 1.0
-//rawFilter?.contrastAmount=0.8
-guard let image2 = rawFilter?.outputImage else { exit(1) }
-//let image2 = rawFilter?.outputImage
-//guard let image = CIImage(data: rawFilter.outputImage,
-//        options: [.expandToHDR: true])
-//else {
-//    print("Couldn't create an image. :(")
-//    exit(1)
-//}
-//rawFilter.outputImage
-//print(rawFilter?.outputImage)
-//exit(1)
-//guard let image = CIImage(contentsOf: originalImageURL)
-//else {
-//    print("Couldn't create an image. :(")
-//    exit(1)
-//}
-
-if (choose_export == "1") {
-
-    do {
-        _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace_dp3, options: options_compress)
-        print("It worked")
-    }
-//        _ = try context.writeHEIF10Representation(of: image, to: exportedImageURL, colorSpace: colorSpace, options: options)
-//        print("It worked")
-//    }
-    catch {
-        print("It failed.")
+    if fileManager.fileExists(atPath: path, isDirectory: &isDirectory) {
+        if isDirectory.boolValue {
+            // It's a directory, process all non-heic files
+            do {
+                let files = try fileManager.contentsOfDirectory(atPath: path)
+                for file in files {
+                    let filePath = (path as NSString).appendingPathComponent(file)
+                    if imageExtensions.contains(where: file.hasSuffix) {
+                        processFile(filePath, compressionRatio: compressionRatio)
+                    }
+                }
+            } catch {
+                print("Error reading contents of directory: \(error)")
+            }
+        } else {
+            // It's a file, process the single file
+            processFile(path, compressionRatio: compressionRatio)
         }
+    } else {
+        print("The provided path does not exist.")
+    }
 }
-else if (choose_export == "2") {
+
+// Function to process a single file
+func processFile(_ filePath: String, compressionRatio: CGFloat) {
+    guard let colorSpace = CGColorSpace(name: CGColorSpace.itur_2100_HLG) else {
+        print("Couldn't create a color space.")
+        exit(1)
+    }
+    let context = CIContext(options: [.workingColorSpace: colorSpace])
+
+    let inputURL = URL(fileURLWithPath: filePath)
+    let outputURL = inputURL.deletingPathExtension().appendingPathExtension("jpg")
+
+    print(inputURL.path, " -> ", outputURL.path)
+
+    guard let image = CIImage(contentsOf: inputURL, options: [.expandToHDR: true]) else {
+        print("Couldn't create an image from \(inputURL.path).")
+        exit(1)
+    }
+
+    let options = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: compressionRatio]
     do {
-        _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace_dp3, options: options_full)
-        print("It worked")
-//        _ = try context.writeHEIF10Representation(of: image, to: exportedImageURL, colorSpace: colorSpace, options: options)
-//        print("It worked")
-    }
-    catch {
-        print("It failed.")
-        }
-}
-else if (choose_export == "3") {
-    do {
-    //    _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace, options: options)
-    //    print("It worked")
-        _ = try context.writeHEIF10Representation(of: image, to: exportedImageURL, colorSpace: colorSpace_dp3, options: options_compress)
-        print("It worked")
-    }
-    catch {
-        print("It failed.")
+        try context.writeJPEGRepresentation(of: image, to: outputURL, colorSpace: image.colorSpace!, options: options)
+    } catch {
+        print("Failed to write the image with error: \(error)")
+        exit(1)
     }
 }
-else if (choose_export == "4") {
-    do {
-    //    _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace, options: options)
-    //    print("It worked")
-        _ = try context.writeHEIF10Representation(of: image, to: exportedImageURL, colorSpace: colorSpace_dp3, options: options_full)
-        print("It worked")
+
+// Main function to execute the conversion process
+func main() {
+    let args = parseCommandLineArguments()
+    
+    guard !args.path.isEmpty else {
+        print("Usage: <path> [compressionRatio]")
+        return
     }
-    catch {
-        print("It failed.")
-    }
+    
+    processPath(args.path, compressionRatio: args.compressionRatio)
 }
-else if (choose_export == "5") {
-    do {
-    //    _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace, options: options)
-    //    print("It worked")
-        _ = try context.writeHEIF10Representation(of: image, to: exportedImageURL, colorSpace: colorSpace_2100_HLG, options: options_full)
-        print("It worked")
-    }
-    catch {
-        print("It failed.")
-    }
-}
-else if (choose_export == "6") {
-    do {
-    //    _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace, options: options)
-    //    print("It worked")
-        _ = try context.writeHEIF10Representation(of: image, to: exportedImageURL, colorSpace: colorSpace_2100_PQ, options: options_compress)
-        print("It worked")
-    }
-    catch {
-        print("It failed.")
-    }
-}
-else if (choose_export == "7") {
-    do {
-    //    _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace, options: options)
-    //    print("It worked")
-        _ = try context.writeHEIF10Representation(of: image2, to: exportedImageURL, colorSpace: colorSpace_2100_HLG, options: options_full)
-        print("It worked")
-    }
-    catch {
-        print("It failed.")
-    }
-}
-else if (choose_export == "8") {
-    do {
-    //    _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace, options: options)
-    //    print("It worked")
-        _ = try context.writeHEIF10Representation(of: image2, to: exportedImageURL, colorSpace: colorSpace_2100_PQ, options: options_full)
-        print("It worked")
-    }
-    catch {
-        print("It failed.")
-    }
-}
-//do {
-////    _ = try context.writeHEIFRepresentation(of: image, to: exportedImageURL, format: CIFormat.RGBA8, colorSpace: colorSpace, options: options)
-////    print("It worked")
-//    _ = try context.writeHEIF10Representation(of: rawFilter.outputImage, to: exportedImageURL, colorSpace: colorSpace_2100_PQ, options: options_full)
-//    print("It worked")
-//}
-//catch {
-//    print("It failed.")
-//}
+
+// Run the main function
+main()
