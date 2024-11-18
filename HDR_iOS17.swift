@@ -1,5 +1,6 @@
 import Cocoa
 import CoreImage
+import AVFoundation
 
 // Constants for command line arguments
 struct CommandLineArguments {
@@ -49,9 +50,8 @@ func processPath(_ path: String, compressionRatio: CGFloat) {
     }
 }
 
-// Function to process a single file
 func processFile(_ filePath: String, compressionRatio: CGFloat) {
-    guard let colorSpace = CGColorSpace(name: CGColorSpace.itur_2100_HLG) else {
+    guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
         print("Couldn't create a color space.")
         exit(1)
     }
@@ -60,21 +60,38 @@ func processFile(_ filePath: String, compressionRatio: CGFloat) {
     let inputURL = URL(fileURLWithPath: filePath)
     let outputURL = inputURL.deletingPathExtension().appendingPathExtension("jpg")
 
-    print(inputURL.path, " -> ", outputURL.path)
+    print("\(inputURL.path) -> \(outputURL.path)")
 
-    guard let image = CIImage(contentsOf: inputURL, options: [.expandToHDR: true]) else {
+    let fileExtension = inputURL.pathExtension.lowercased()
+    var image: CIImage?
+
+    if fileExtension == "raw" {
+        // 读取 RAW 文件的适配逻辑
+        guard let data = try? Data(contentsOf: inputURL),
+              let rawImage = CIImage(data: data, options: [CIImageOption.applyOrientationProperty: true]) else {
+            print("Couldn't create an image from RAW file \(inputURL.path).")
+            exit(1)
+        }
+        image = rawImage
+    } else {
+        // 处理非 RAW 文件
+        image = CIImage(contentsOf: inputURL, options: [.expandToHDR: true])
+    }
+
+    guard let finalImage = image else {
         print("Couldn't create an image from \(inputURL.path).")
         exit(1)
     }
 
     let options = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: compressionRatio]
     do {
-        try context.writeJPEGRepresentation(of: image, to: outputURL, colorSpace: image.colorSpace!, options: options)
+        try context.writeJPEGRepresentation(of: finalImage, to: outputURL, colorSpace: finalImage.colorSpace ?? colorSpace, options: options)
     } catch {
         print("Failed to write the image with error: \(error)")
         exit(1)
     }
 }
+
 
 // Main function to execute the conversion process
 func main() {
