@@ -6,6 +6,7 @@ import AVFoundation
 struct CommandLineArguments {
     let path: String
     let compressionRatio: CGFloat
+    let width: CGFloat?
 }
 
 // Parses the command line arguments and returns a struct
@@ -13,10 +14,12 @@ func parseCommandLineArguments() -> CommandLineArguments {
     let arguments = CommandLine.arguments
     let path = arguments.count > 1 ? arguments[1] : "."
     let compressionRatio = arguments.count > 2 ? CGFloat(Double(arguments[2]) ?? 0.7) : 0.7
+    let width = arguments.count > 3 ? CGFloat(Double(arguments[3]) ?? 0.0) : nil
     
     return CommandLineArguments(
         path: path,
-        compressionRatio: compressionRatio
+        compressionRatio: compressionRatio,
+        width: width
     )
 }
 
@@ -50,16 +53,40 @@ func processPath(_ path: String, compressionRatio: CGFloat) {
     }
 }
 
-func processFile(_ filePath: String, compressionRatio: CGFloat) {
+func processFile(_ filePath: String, compressionRatio: CGFloat, width: CGFloat? = nil) {
     guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
         print("Couldn't create a color space.")
         exit(1)
     }
     let context = CIContext(options: [.workingColorSpace: colorSpace])
 
+    let fileManager = FileManager.default
     let inputURL = URL(fileURLWithPath: filePath)
-    let outputURL = inputURL.deletingPathExtension().appendingPathExtension("jpg")
 
+    // 检查是否是文件夹
+    var isDirectory: ObjCBool = false
+    if fileManager.fileExists(atPath: inputURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
+        // 批量处理文件夹中的图片文件
+        do {
+            let files = try fileManager.contentsOfDirectory(at: inputURL, includingPropertiesForKeys: nil, options: [])
+            for file in files {
+                let ext = file.pathExtension.lowercased()
+                if ["jpg", "jpeg", "png", "raw", "tiff", "bmp", "heic", "dng", "arw"].contains(ext) {
+                    processSingleFile(file, context: context, colorSpace: colorSpace, compressionRatio: compressionRatio, width: width)
+                }
+            }
+        } catch {
+            print("Failed to read contents of directory: \(error)")
+            exit(1)
+        }
+    } else {
+        // 处理单个文件
+        processSingleFile(inputURL, context: context, colorSpace: colorSpace, compressionRatio: compressionRatio, width: width)
+    }
+}
+
+private func processSingleFile(_ inputURL: URL, context: CIContext, colorSpace: CGColorSpace, compressionRatio: CGFloat, width: CGFloat?) {
+    let outputURL = inputURL.deletingPathExtension().appendingPathExtension("jpg")
     print("\(inputURL.path) -> \(outputURL.path)")
 
     let fileExtension = inputURL.pathExtension.lowercased()
@@ -70,7 +97,7 @@ func processFile(_ filePath: String, compressionRatio: CGFloat) {
         guard let data = try? Data(contentsOf: inputURL),
               let rawImage = CIImage(data: data, options: [CIImageOption.applyOrientationProperty: true]) else {
             print("Couldn't create an image from RAW file \(inputURL.path).")
-            exit(1)
+            return
         }
         image = rawImage
     } else {
@@ -78,20 +105,25 @@ func processFile(_ filePath: String, compressionRatio: CGFloat) {
         image = CIImage(contentsOf: inputURL, options: [.expandToHDR: true])
     }
 
-    guard let finalImage = image else {
+    guard var finalImage = image else {
         print("Couldn't create an image from \(inputURL.path).")
-        exit(1)
+        return
     }
 
+    // 图片缩放逻辑（仅当指定 width 时进行缩放）
+    if let targetWidth = width {
+        let scale = targetWidth / finalImage.extent.width
+        finalImage = finalImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    }
+
+    // 保存压缩后的 JPEG 文件
     let options = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: compressionRatio]
     do {
         try context.writeJPEGRepresentation(of: finalImage, to: outputURL, colorSpace: finalImage.colorSpace ?? colorSpace, options: options)
     } catch {
         print("Failed to write the image with error: \(error)")
-        exit(1)
     }
 }
-
 
 // Main function to execute the conversion process
 func main() {
@@ -102,7 +134,7 @@ func main() {
         return
     }
     
-    processPath(args.path, compressionRatio: args.compressionRatio)
+    processFile(args.path, compressionRatio: args.compressionRatio, width:args.width)
 }
 
 // Run the main function
