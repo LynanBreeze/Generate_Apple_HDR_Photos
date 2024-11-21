@@ -1,6 +1,5 @@
 import Cocoa
 import CoreImage
-import AVFoundation
 
 // Constants for command line arguments
 struct CommandLineArguments {
@@ -14,7 +13,7 @@ struct CommandLineArguments {
 func parseCommandLineArguments() -> CommandLineArguments {
     let arguments = CommandLine.arguments
     let path = arguments.count > 1 ? arguments[1] : "."
-    let compressionRatio = arguments.count > 2 ? CGFloat(Double(arguments[2]) ?? 0.7) : 0.7
+    let compressionRatio = arguments.count > 2 ? CGFloat(Double(arguments[2]) ?? 0.75) : 0.75
     let width = arguments.count > 3 ? arguments[3] : "original" 
     let outputDir = arguments.count > 4 ? arguments[4] : nil
     
@@ -24,36 +23,6 @@ func parseCommandLineArguments() -> CommandLineArguments {
         width: width,
         outputDir: outputDir
     )
-}
-
-// Function to check if the path is a directory and process accordingly
-func processPath(_ path: String, compressionRatio: CGFloat) {
-    let fileManager = FileManager.default
-    var isDirectory: ObjCBool = false
-
-    let imageExtensions = [".avif"]
-
-    if fileManager.fileExists(atPath: path, isDirectory: &isDirectory) {
-        if isDirectory.boolValue {
-            // It's a directory, process all non-heic files
-            do {
-                let files = try fileManager.contentsOfDirectory(atPath: path)
-                for file in files {
-                    let filePath = (path as NSString).appendingPathComponent(file)
-                    if imageExtensions.contains(where: file.hasSuffix) {
-                        processFile(filePath, compressionRatio: compressionRatio)
-                    }
-                }
-            } catch {
-                print("Error reading contents of directory: \(error)")
-            }
-        } else {
-            // It's a file, process the single file
-            processFile(path, compressionRatio: compressionRatio)
-        }
-    } else {
-        print("The provided path does not exist.")
-    }
 }
 
 func processFile(_ filePath: String, compressionRatio: CGFloat, width: Any? = "original", outputDir: String? = nil) {
@@ -74,7 +43,7 @@ func processFile(_ filePath: String, compressionRatio: CGFloat, width: Any? = "o
             let files = try fileManager.contentsOfDirectory(at: inputURL, includingPropertiesForKeys: nil, options: [])
             for file in files {
                 let ext = file.pathExtension.lowercased()
-                if ["jpg", "jpeg", "png", "raw", "tiff", "bmp", "heic", "dng", "arw"].contains(ext) {
+                if ["jpg", "jpeg", "png", "raw", "tiff", "bmp", "heic", "dng", "arw", "HIF"].contains(ext) {
                     processSingleFile(file, context: context, colorSpace: colorSpace, compressionRatio: compressionRatio, width: width, outputDir: outputDir ?? inputURL.appendingPathComponent("converted").path)
                 }
             }
@@ -102,7 +71,8 @@ private func processSingleFile(_ inputURL: URL, context: CIContext, colorSpace: 
         }
     }
 
-    let outputURL = outputDirURL.appendingPathComponent(inputURL.deletingPathExtension().lastPathComponent).appendingPathExtension("jpg")
+    // let outputURL = outputDirURL.appendingPathComponent(inputURL.deletingPathExtension().lastPathComponent).appendingPathExtension("jpg")
+    let outputURL = outputDirURL.appendingPathComponent(inputURL.deletingPathExtension().lastPathComponent)
     print("\(inputURL.path) -> \(outputURL.path)")
 
     let fileExtension = inputURL.pathExtension.lowercased()
@@ -152,7 +122,8 @@ private func processSingleFile(_ inputURL: URL, context: CIContext, colorSpace: 
     // 保存压缩后的 JPEG 文件
     let options = [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: compressionRatio]
     do {
-        try context.writeJPEGRepresentation(of: finalImage, to: outputURL, colorSpace: finalImage.colorSpace ?? colorSpace, options: options)
+        try context.writeJPEGRepresentation(of: finalImage, to: outputURL.appendingPathExtension("jpg"), colorSpace: finalImage.colorSpace ?? colorSpace, options: options)
+        // try context.writeHEIF10Representation(of: finalImage, to: outputURL.appendingPathExtension("heic"), colorSpace: finalImage.colorSpace ?? colorSpace, options: options)
     } catch {
         print("Failed to write the image with error: \(error)")
     }
