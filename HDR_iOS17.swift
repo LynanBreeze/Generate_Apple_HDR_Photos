@@ -43,7 +43,7 @@ func processFile(_ filePath: String, compressionRatio: CGFloat, width: Any? = "o
             let files = try fileManager.contentsOfDirectory(at: inputURL, includingPropertiesForKeys: nil, options: [])
             for file in files {
                 let ext = file.pathExtension.lowercased()
-                if ["jpg", "jpeg", "png", "raw", "tiff", "bmp", "heic", "dng", "arw", "HIF"].contains(ext) {
+                if ["jpg", "jpeg", "png", "raw", "tiff", "bmp", "heic", "dng", "arw", "HIF", "RW2", "NEF"].contains(ext) {
                     processSingleFile(file, context: context, colorSpace: colorSpace, compressionRatio: compressionRatio, width: width, outputDir: outputDir ?? inputURL.appendingPathComponent("converted").path)
                 }
             }
